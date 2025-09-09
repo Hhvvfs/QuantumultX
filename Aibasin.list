@@ -1,3 +1,4 @@
-host-keyword,jv
-host-keyword,aicoinstorge
-host,static.aicoinstorge.com
+host,mapi.jv.mp,Aibasin
+host,static.aicoinstorge.com,Aibasin
+host-keyword,jv,Aibasin
+host-keyword,aicoinstorge,Aibasin
