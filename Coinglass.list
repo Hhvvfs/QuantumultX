@@ -1,7 +1,7 @@
 host,app-ev.coinglass.io,coinglass
 host,wss.coinglass.io,coinglass
 host,api.coinglass.io,coinglass
-host,app-measurement.com:,coinglass
+host,app-measurement.com,coinglass
 host-suffix,coinglass.io,coinglass
 host-suffix,measurement.com,coinglass
 host-keyword,coinglass,coinglass
