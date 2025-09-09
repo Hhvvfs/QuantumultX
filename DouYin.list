@@ -1,0 +1,13 @@
+HOST, lf3-static.bytednsdoc.com, ByteDance
+HOST, v5-dy-o-abtest.zjcdn.com, ByteDance
+HOST-SUFFIX, amemv.com, ByteDance
+HOST-SUFFIX, douyincdn.com, ByteDance
+HOST-SUFFIX, douyinpic.com, ByteDance
+HOST-SUFFIX, douyinstatic.com, ByteDance
+HOST-SUFFIX, douyinvod.com, ByteDance
+HOST-SUFFIX, idouyinvod.com, ByteDance
+HOST-SUFFIX, ixigua.com, ByteDance
+HOST-SUFFIX, ixiguavideo.com, ByteDance
+HOST-SUFFIX, pstatp.com, ByteDance
+HOST-SUFFIX, snssdk.com, ByteDance
+HOST-SUFFIX, toutiao.com, ByteDance
