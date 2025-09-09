@@ -1,92 +1,78 @@
-# NAME: SystemOTA
-HOST,appldnld-cdn.apple.com.akadns.net,SystemOTA
-HOST,appldnld-cdn.origin-apple.com.akadns.net,SystemOTA
-HOST,appldnld-lb.apple.com.akadns.net,SystemOTA
-HOST,appldnld.apple.com,SystemOTA
-HOST,appldnld.apple.com.akadns.net,SystemOTA
-HOST,appldnld.apple.com.mwcname.com,SystemOTA
-HOST,appldnld.g.aaplimg.com,SystemOTA
-HOST,configuration.apple.com,SystemOTA
-HOST,gdmf-cdn.apple.com.akadns.net,SystemOTA
-HOST,gdmf-cdn.origin-apple.com.akadns.net,SystemOTA
-HOST,gdmf-lb.apple.com.akadns.net,SystemOTA
-HOST,gdmf.apple.com,SystemOTA
-HOST,gdmf.apple.com.akadns.net,SystemOTA
-HOST,gdmf.apple.com.mwcname.com,SystemOTA
-HOST,gdmf.g.aaplimg.com,SystemOTA
-HOST,gg-cdn.apple.com.akadns.net,SystemOTA
-HOST,gg-cdn.origin-apple.com.akadns.net,SystemOTA
-HOST,gg-lb.apple.com.akadns.net,SystemOTA
-HOST,gg.apple.com,SystemOTA
-HOST,gg.apple.com.akadns.net,SystemOTA
-HOST,gg.apple.com.mwcname.com,SystemOTA
-HOST,gg.g.aaplimg.com,SystemOTA
-HOST,gnf-mdn.apple.com,SystemOTA
-HOST,gnf-mr.apple.com,SystemOTA
-HOST,gs.apple.com,SystemOTA
-HOST,ig.apple.com,SystemOTA
-HOST,iphonesubmissions-cdn.apple.com.akadns.net,SystemOTA
-HOST,iphonesubmissions-cdn.origin-apple.com.akadns.net,SystemOTA
-HOST,iphonesubmissions-lb.apple.com.akadns.net,SystemOTA
-HOST,iphonesubmissions.apple.com,SystemOTA
-HOST,iphonesubmissions.apple.com.akadns.net,SystemOTA
-HOST,iphonesubmissions.apple.com.mwcname.com,SystemOTA
-HOST,iphonesubmissions.g.aaplimg.com,SystemOTA
-HOST,mesu-cdn.apple.com.akadns.net,SystemOTA
-HOST,mesu-cdn.origin-apple.com.akadns.net,SystemOTA
-HOST,mesu-lb.apple.com.akadns.net,SystemOTA
-HOST,mesu.apple.com,SystemOTA
-HOST,mesu.apple.com.akadns.net,SystemOTA
-HOST,mesu.apple.com.mwcname.com,SystemOTA
-HOST,mesu.g.aaplimg.com,SystemOTA
-HOST,ns.itunes.apple.com,SystemOTA
-HOST,ocsp-cdn.apple.com.akadns.net,SystemOTA
-HOST,ocsp-cdn.origin-apple.com.akadns.net,SystemOTA
-HOST,ocsp-lb.apple.com.akadns.net,SystemOTA
-HOST,ocsp.apple.com,SystemOTA
-HOST,ocsp.apple.com.akadns.net,SystemOTA
-HOST,ocsp.apple.com.mwcname.com,SystemOTA
-HOST,ocsp.g.aaplimg.com,SystemOTA
-HOST,oscdn.apple.com,SystemOTA
-HOST,osrecovery.apple.com,SystemOTA
-HOST,radarsubmissions-cdn.apple.com.akadns.net,SystemOTA
-HOST,radarsubmissions-cdn.origin-apple.com.akadns.net,SystemOTA
-HOST,radarsubmissions-lb.apple.com.akadns.net,SystemOTA
-HOST,radarsubmissions.apple.com,SystemOTA
-HOST,radarsubmissions.apple.com.akadns.net,SystemOTA
-HOST,radarsubmissions.apple.com.mwcname.com,SystemOTA
-HOST,radarsubmissions.g.aaplimg.com,SystemOTA
-HOST,skl.apple.com,SystemOTA
-HOST,swcdn.apple.com,SystemOTA
-HOST,swdist.apple.com,SystemOTA
-HOST,swdownload.apple.com,SystemOTA
-HOST,swpost.apple.com,SystemOTA
-HOST,swscan-cdn.apple.com.akadns.net,SystemOTA
-HOST,swscan-cdn.origin-apple.com.akadns.net,SystemOTA
-HOST,swscan-lb.apple.com.akadns.net,SystemOTA
-HOST,swscan.apple.com,SystemOTA
-HOST,swscan.apple.com.akadns.net,SystemOTA
-HOST,swscan.apple.com.mwcname.com,SystemOTA
-HOST,swscan.g.aaplimg.com,SystemOTA
-HOST,updates-http.cdn-apple.com,SystemOTA
-HOST,updates.cdn-apple.com,SystemOTA
-HOST,xp-cdn.apple.com.akadns.net,SystemOTA
-HOST,xp-cdn.origin-apple.com.akadns.net,SystemOTA
-HOST,xp-lb.apple.com.akadns.net,SystemOTA
-HOST,xp.apple.com,SystemOTA
-HOST,xp.apple.com.akadns.net,SystemOTA
-HOST,xp.apple.com.mwcname.com,SystemOTA
-HOST,xp.g.aaplimg.com,SystemOTA
-HOST-SUFFIX,appldnld-lb.apple.com.akadns.net,SystemOTA
-HOST-SUFFIX,appldnld.apple.com,SystemOTA
-HOST-SUFFIX,appldnld.apple.com.akadns.net,SystemOTA
-HOST-SUFFIX,appldnld.g.aaplimg.com,SystemOTA
-HOST-SUFFIX,gdmf.apple.com,SystemOTA
-HOST-SUFFIX,gdmf.apple.com.akadns.net,SystemOTA
-HOST-SUFFIX,mesu-cdn.apple.com.akadns.net,SystemOTA
-HOST-SUFFIX,mesu-cdn.origin-apple.com.akadns.net,SystemOTA
-HOST-SUFFIX,mesu.apple.com,SystemOTA
-HOST-SUFFIX,mesu.g.aaplimg.com,SystemOTA
-HOST-SUFFIX,ocsp-lb.apple.com.akadns.net,SystemOTA
-HOST-SUFFIX,ocsp.apple.com,SystemOTA
-HOST-SUFFIX,ocsp.g.aaplimg.com,SystemOTA
+HOST, appldnld-cdn.apple.com.akadns.net, Apple
+HOST, appldnld-cdn.origin-apple.com.akadns.net, Apple
+HOST, appldnld.apple.com.mwcname.com, Apple
+HOST, configuration.apple.com, Apple
+HOST, gdmf-cdn.apple.com.akadns.net, Apple
+HOST, gdmf-cdn.origin-apple.com.akadns.net, Apple
+HOST, gdmf-lb.apple.com.akadns.net, Apple
+HOST, gdmf.apple.com.mwcname.com, Apple
+HOST, gdmf.g.aaplimg.com, Apple
+HOST, gg-cdn.apple.com.akadns.net, Apple
+HOST, gg-cdn.origin-apple.com.akadns.net, Apple
+HOST, gg-lb.apple.com.akadns.net, Apple
+HOST, gg.apple.com, Apple
+HOST, gg.apple.com.akadns.net, Apple
+HOST, gg.apple.com.mwcname.com, Apple
+HOST, gg.g.aaplimg.com, Apple
+HOST, gnf-mdn.apple.com, Apple
+HOST, gnf-mr.apple.com, Apple
+HOST, gs.apple.com, Apple
+HOST, ig.apple.com, Apple
+HOST, iphonesubmissions-cdn.apple.com.akadns.net, Apple
+HOST, iphonesubmissions-cdn.origin-apple.com.akadns.net, Apple
+HOST, iphonesubmissions-lb.apple.com.akadns.net, Apple
+HOST, iphonesubmissions.apple.com, Apple
+HOST, iphonesubmissions.apple.com.akadns.net, Apple
+HOST, iphonesubmissions.apple.com.mwcname.com, Apple
+HOST, iphonesubmissions.g.aaplimg.com, Apple
+HOST, mesu-lb.apple.com.akadns.net, Apple
+HOST, mesu.apple.com.akadns.net, Apple
+HOST, mesu.apple.com.mwcname.com, Apple
+HOST, ns.itunes.apple.com, Apple
+HOST, ocsp-cdn.apple.com.akadns.net, Apple
+HOST, ocsp-cdn.origin-apple.com.akadns.net, Apple
+HOST, ocsp.apple.com.akadns.net, Apple
+HOST, ocsp.apple.com.mwcname.com, Apple
+HOST, oscdn.apple.com, Apple
+HOST, osrecovery.apple.com, Apple
+HOST, radarsubmissions-cdn.apple.com.akadns.net, Apple
+HOST, radarsubmissions-cdn.origin-apple.com.akadns.net, Apple
+HOST, radarsubmissions-lb.apple.com.akadns.net, Apple
+HOST, radarsubmissions.apple.com, Apple
+HOST, radarsubmissions.apple.com.akadns.net, Apple
+HOST, radarsubmissions.apple.com.mwcname.com, Apple
+HOST, radarsubmissions.g.aaplimg.com, Apple
+HOST, skl.apple.com, Apple
+HOST, swcdn.apple.com, Apple
+HOST, swdist.apple.com, Apple
+HOST, swdownload.apple.com, Apple
+HOST, swpost.apple.com, Apple
+HOST, swscan-cdn.apple.com.akadns.net, Apple
+HOST, swscan-cdn.origin-apple.com.akadns.net, Apple
+HOST, swscan-lb.apple.com.akadns.net, Apple
+HOST, swscan.apple.com, Apple
+HOST, swscan.apple.com.akadns.net, Apple
+HOST, swscan.apple.com.mwcname.com, Apple
+HOST, swscan.g.aaplimg.com, Apple
+HOST, updates-http.cdn-apple.com, Apple
+HOST, updates.cdn-apple.com, Apple
+HOST, xp-cdn.apple.com.akadns.net, Apple
+HOST, xp-cdn.origin-apple.com.akadns.net, Apple
+HOST, xp-lb.apple.com.akadns.net, Apple
+HOST, xp.apple.com, Apple
+HOST, xp.apple.com.akadns.net, Apple
+HOST, xp.apple.com.mwcname.com, Apple
+HOST, xp.g.aaplimg.com, Apple
+HOST-SUFFIX, appldnld-lb.apple.com.akadns.net, Apple
+HOST-SUFFIX, appldnld.apple.com, Apple
+HOST-SUFFIX, appldnld.apple.com.akadns.net, Apple
+HOST-SUFFIX, appldnld.g.aaplimg.com, Apple
+HOST-SUFFIX, gdmf.apple.com, Apple
+HOST-SUFFIX, gdmf.apple.com.akadns.net, Apple
+HOST-SUFFIX, mesu-cdn.apple.com.akadns.net, Apple
+HOST-SUFFIX, mesu-cdn.origin-apple.com.akadns.net, Apple
+HOST-SUFFIX, mesu.apple.com, Apple
+HOST-SUFFIX, mesu.g.aaplimg.com, Apple
+HOST-SUFFIX, ocsp-lb.apple.com.akadns.net, Apple
+HOST-SUFFIX, ocsp.apple.com, Apple
+HOST-SUFFIX, ocsp.g.aaplimg.com, Apple
