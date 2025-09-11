@@ -1,84 +1,62 @@
-/**
- * 圈X JS 脚本：远程规则转换（只输出规则，不带 [Rule]）
- * 使用方式：在圈X脚本添加，脚本参数填远程规则 URL
- */
+// resource-parser.js 通用版
+// 读取远程订阅列表并生成圈X规则
 
-let url = $argument[0]; // 第一个参数：远程规则 URL
+const subscriptionsUrl = "https://your-server.com/subscriptions.json"; // 订阅列表文件
 
-function getName(domain) {
-    if(!domain) return '';
-    domain = domain.replace(/^\.+|\*+/g, ''); // 去掉开头的 . 或 *
-    let parts = domain.split('.');
-    if(parts.length >= 2) return parts[parts.length-2]; // 取倒数第二段作为名字
-    return parts[0];
+async function fetchJson(url) {
+    try {
+        const resp = await $httpClient.get(url);
+        return JSON.parse(resp.body);
+    } catch (e) {
+        console.log("抓取订阅列表失败:", e);
+        return [];
+    }
 }
 
-if(!url){
-    $done('# 请提供远程规则 URL');
-} else {
-    $httpClient.get(url, (error, response, data) => {
-        if(error || response.status !== 200){
-            $done('# 下载规则失败: ' + (error || response.status));
-            return;
+async function fetchRules(sub) {
+    try {
+        const resp = await $httpClient.get(sub.url);
+        if (!resp || !resp.body) return [];
+
+        const lines = resp.body.split(/\r?\n/);
+        const result = [];
+
+        const typeMap = {
+            "DOMAIN-KEYWORD": "HOST-KEYWORD",
+            "IP-CIDR": "IP-CIDR",
+            "USER-AGENT": "USER-AGENT"
+        };
+
+        for (const line of lines) {
+            const trimLine = line.trim();
+            if (!trimLine || trimLine.startsWith("#")) continue;
+            const parts = trimLine.split(",");
+            const ruleType = parts[0].trim();
+            if (!typeMap[ruleType]) continue;
+
+            let content = parts[1].trim();
+            if ((ruleType === "IP-CIDR") && parts[2] && parts[2].trim() === "no-resolve") {
+                // 去掉 no-resolve
+            }
+
+            result.push(`${typeMap[ruleType]}, ${content}, ${sub.brand}`);
         }
+        return result;
 
-        let lines = data.split(/\r?\n/);
-        let output = [];
-
-        lines.forEach(line => {
-            line = line.trim();
-            if(!line || line.startsWith('#') || line.toUpperCase() === '[RULE]') return;
-
-            let domain = '';
-            let type = '';
-            let name = '';
-
-            if(/^HOST(-SUFFIX|-WILDCARD|-KEYWORD)?[,]/i.test(line)){
-                let parts = line.split(',');
-                type = parts[0].toUpperCase();
-                domain = parts[1];
-                name = getName(domain);
-                output.push(`${type},${domain},${name}`);
-            }
-            else if(/^(USER-AGENT|GEOIP|IP-ASN|IP-CIDR|IP6-CIDR)[,]/i.test(line)){
-                let parts = line.split(',');
-                type = parts[0].toUpperCase();
-                domain = parts[1];
-                name = type;
-                output.push(`${type},${domain},${name}`);
-            }
-            else if(/^DOMAIN[,]/i.test(line)){
-                domain = line.split(',')[1];
-                if(!domain) return;
-                name = getName(domain);
-
-                if(domain.includes('*')){
-                    type = 'HOST-WILDCARD';
-                } else if(domain.startsWith('.')){
-                    type = 'HOST-SUFFIX';
-                    domain = domain.slice(1);
-                } else {
-                    type = 'HOST';
-                }
-
-                output.push(`${type},${domain},${name}`);
-            }
-            else if(/^DOMAIN-SUFFIX[,]/i.test(line)){
-                domain = line.split(',')[1];
-                if(!domain) return;
-                type = 'HOST-SUFFIX';
-                name = getName(domain);
-                output.push(`${type},${domain},${name}`);
-            }
-            else if(/^DOMAIN-KEYWORD[,]/i.test(line)){
-                domain = line.split(',')[1];
-                if(!domain) return;
-                type = 'HOST-KEYWORD';
-                name = getName(domain);
-                output.push(`${type},${domain},${name}`);
-            }
-        });
-
-        $done(output.join('\n'));
-    });
+    } catch (e) {
+        console.log("抓取规则失败:", sub.url, e);
+        return [];
+    }
 }
+
+(async () => {
+    const subs = await fetchJson(subscriptionsUrl);
+    let allItems = [];
+
+    for (const sub of subs) {
+        const rules = await fetchRules(sub);
+        allItems = allItems.concat(rules);
+    }
+
+    $done({ items: allItems });
+})();
