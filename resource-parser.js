@@ -1,8 +1,13 @@
-// resource-parser.js 通用版
-// 读取远程订阅列表并生成圈X规则
+/**
+ * @supported_version 1.0
+ * @name Multi-Subscription Parser
+ * @description 通用圈X解析器，支持多远程订阅，自动转换圈X规则格式，添加品牌标记
+ * @update_url https://your-server.com/resource-parser.js
+ */
 
-const subscriptionsUrl = "https://your-server.com/subscriptions.json"; // 订阅列表文件
+const subscriptionsUrl = "https://your-server.com/subscriptions.json"; // 订阅列表 JSON
 
+// 圈X 提供的异步 HTTP 客户端
 async function fetchJson(url) {
     try {
         const resp = await $httpClient.get(url);
@@ -41,6 +46,7 @@ async function fetchRules(sub) {
 
             result.push(`${typeMap[ruleType]}, ${content}, ${sub.brand}`);
         }
+
         return result;
 
     } catch (e) {
@@ -58,5 +64,6 @@ async function fetchRules(sub) {
         allItems = allItems.concat(rules);
     }
 
+    // $done 是圈X调用解析器必须使用的接口
     $done({ items: allItems });
 })();
