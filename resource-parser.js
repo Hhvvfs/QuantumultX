@@ -1,52 +1,63 @@
 /**
- * Quantumult X 资源解析器
- * 功能：将 Surge/Clash 类型规则转换为 Quantumult X 支持的规则
- * 支持类型：
- * HOST, HOST-SUFFIX, HOST-WILDCARD, HOST-KEYWORD,
- * USER-AGENT, IP-CIDR, IP6-CIDR, GEOIP, IP-ASN
- * 特性：保证每条规则都有策略名，默认填 "ChatGPT"
+ * Quantumult X 资源解析器（自动补齐策略名）
+ * - 从资源 URL 提取文件名作为策略名，例如 ChatGPT.list -> ChatGPT
+ * - 每条规则都保证带策略名（若原始没有则补上）
  */
 
 function main(content, url, type) {
-  let lines = content.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#"));
-  let results = [];
+  content = (content || '').replace(/^\uFEFF/, ''); // 去 BOM
 
-  for (let line of lines) {
-    let parts = line.split(",");
+  // 从 URL 提取策略名（默认 Default）
+  var defaultPolicy = 'Default';
+  try {
+    var fname = (url || '').split('/').pop() || '';
+    if (fname) defaultPolicy = fname.replace(/\.[^.]*$/, '') || defaultPolicy;
+  } catch (e) {}
+
+  var lines = content.replace(/\r\n/g, '\n').split('\n');
+  var out = [];
+
+  for (var i = 0; i < lines.length; i++) {
+    var line = (lines[i] || '').trim();
+    if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+
+    // 拆分
+    var parts = line.split(',').map(x => x.trim());
     if (parts.length < 2) continue;
 
-    let ruleType = parts[0].toUpperCase();
-    let value = parts[1];
-    let policy = parts[2] ? parts[2] : "ChatGPT"; // 没有策略名就补上
+    var ruleType = parts[0].toUpperCase();
+    var value = parts[1];
+    var policy = parts[2] ? parts[2] : defaultPolicy; // 没有就补默认策略名
 
+    // 映射为 Quantumult X 支持类型
     switch (ruleType) {
-      case "DOMAIN":
-        results.push(`HOST,${value},${policy}`);
+      case 'DOMAIN':
+        out.push(`HOST,${value},${policy}`);
         break;
-      case "DOMAIN-SUFFIX":
-        results.push(`HOST-SUFFIX,${value},${policy}`);
+      case 'DOMAIN-SUFFIX':
+        out.push(`HOST-SUFFIX,${value},${policy}`);
         break;
-      case "DOMAIN-KEYWORD":
-        results.push(`HOST-KEYWORD,${value},${policy}`);
+      case 'DOMAIN-KEYWORD':
+        out.push(`HOST-KEYWORD,${value},${policy}`);
         break;
-      case "IP-CIDR6":
-        results.push(`IP6-CIDR,${value},${policy}`);
+      case 'IP-CIDR6':
+        out.push(`IP6-CIDR,${value},${policy}`);
         break;
-      case "HOST":
-      case "HOST-SUFFIX":
-      case "HOST-WILDCARD":
-      case "HOST-KEYWORD":
-      case "USER-AGENT":
-      case "IP-CIDR":
-      case "GEOIP":
-      case "IP-ASN":
-        results.push(`${ruleType},${value},${policy}`);
+      case 'HOST':
+      case 'HOST-SUFFIX':
+      case 'HOST-WILDCARD':
+      case 'HOST-KEYWORD':
+      case 'USER-AGENT':
+      case 'IP-CIDR':
+      case 'GEOIP':
+      case 'IP-ASN':
+        out.push(`${ruleType},${value},${policy}`);
         break;
       default:
-        // 不支持的类型丢弃
+        // 不支持的类型跳过
         break;
     }
   }
 
-  return results.join("\n");
+  return out.join('\n');
 }
