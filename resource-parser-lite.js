@@ -1,62 +1,41 @@
 /**
- * Quantumult X 资源解析器
- * 功能：
- * 1. 抓取小火箭/远程规则集节点
- * 2. 自动解析节点（V2Ray/SS/Trojan）
- * 3. 解析规则并转换为 QX 格式
+ * Quantumult X 规则解析器
+ * 功能：将原始规则集转换为 Quantumult X 可识别的规则格式
  */
 
-const inputURL = "https://example.com/remote-rules.txt"; // 远程规则/节点 URL
-const defaultProxyName = "Proxy"; // 转换后默认节点名称
+const inputURL = "https://whatshub.top/rule/Google.list"; // 原始规则集 URL
+const defaultProxy = "Proxy"; // 默认策略组名
 
 $task.fetch(inputURL).then(response => {
     const raw = response.body;
-    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const lines = raw.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
 
-    let nodeList = [];
-    let ruleList = [];
+    const convertedRules = lines.map(line => {
+        const [type, value] = line.split(',').map(part => part.trim());
+        if (!type || !value) return null;
 
-    lines.forEach(line => {
-        // 判断是否是节点（Vmess/SS/Trojan）
-        if (line.startsWith('vmess://') || line.startsWith('ss://') || line.startsWith('trojan://')) {
-            nodeList.push(line);
-        } else {
-            // 解析规则
-            const parts = line.split(',');
-            const type = parts[0].toUpperCase();
-            const value = parts[1];
-
-            switch (type) {
-                case 'DOMAIN-SUFFIX':
-                    ruleList.push(`DOMAIN-SUFFIX,${value},${defaultProxyName}`);
-                    break;
-                case 'DOMAIN':
-                    ruleList.push(`DOMAIN,${value},${defaultProxyName}`);
-                    break;
-                case 'IP-CIDR':
-                    ruleList.push(`IP-CIDR,${value},${defaultProxyName}`);
-                    break;
-                case 'GEOIP':
-                    ruleList.push(`GEOIP,${value},${defaultProxyName}`);
-                    break;
-                case 'FINAL':
-                    ruleList.push(`FINAL,DIRECT`);
-                    break;
-                default:
-                    break;
-            }
+        switch (type.toUpperCase()) {
+            case 'DOMAIN-SUFFIX':
+                return `DOMAIN-SUFFIX,${value},${defaultProxy}`;
+            case 'DOMAIN':
+                return `DOMAIN,${value},${defaultProxy}`;
+            case 'IP-CIDR':
+                return `IP-CIDR,${value},${defaultProxy}`;
+            case 'GEOIP':
+                return `GEOIP,${value},${defaultProxy}`;
+            case 'FINAL':
+                return `FINAL,DIRECT`;
+            default:
+                return null;
         }
-    });
+    }).filter(Boolean);
 
-    // 输出结果
     const output = [
-        '# 节点列表',
-        ...nodeList,
-        '\n# 规则列表',
-        ...ruleList
+        '# 规则列表',
+        ...convertedRules
     ].join('\n');
 
     $done({ body: output });
 }).catch(err => {
-    $done({ body: `解析失败: ${err}` });
+    $done({ body: `解析失败: ${err.message}` });
 });
