@@ -1,234 +1,180 @@
 /**
- * Quantumult X 专用 — 仅节点解析 & 分流规则解析
- * 用法：在订阅链接后使用 # 参数（in/out/regex/rename/sort/policy）
- *
- * 导出接口：返回 { parse: function(url, resourceText) { ... } }
- *
- * 支持解析： vmess://, ss://, ssr://, trojan:// 以及已有的 Quantumult X 节点行
- * 支持规则转换：Surge/Shadowrocket 常见类型 -> Quantumult X 语法
- *
- * 注意：尽量在设备上多测几种订阅样例，某些 provider 的变体很多，必要时我可再迭代增强。
+ * 参考 KOP-XIAO resource-parser.js
+ * 功能：节点 URI → Quantumult X 节点格式
+ *      Surge/Shadowrocket 规则集 → Quantumult X 规则语法
+ * 参数支持：in, out, regex, rename, sort, policy
  */
 
 (function() {
-  // ----------- utils -----------
+  // -------- helpers --------
   function safeAtob(s) {
     if (typeof atob === 'function') return atob(s);
-    // minimal base64 fallback (may not exist in some environments)
-    try { return Buffer.from(s, 'base64').toString('binary'); } catch (e) { return null; }
+    try { return Buffer.from(s, 'base64').toString('binary'); } catch(e) { return null; }
   }
   function b64DecodeUnicode(str) {
+    if (!str) return null;
+    str = str.replace(/-/g, '+').replace(/_/g, '/');
+    while (str.length % 4) str += '=';
     try {
-      // 尝试 URL-safe 修正
-      str = str.replace(/-/g, '+').replace(/_/g, '/');
-      while (str.length % 4) str += '=';
       const bin = safeAtob(str);
       if (bin === null) return null;
-      // decode UTF-8
-      try {
-        return decodeURIComponent(Array.prototype.map.call(bin, function(c) {
-          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-        }).join(''));
-      } catch (e) {
-        return bin;
-      }
-    } catch (e) {
+      return decodeURIComponent(Array.prototype.map.call(bin, function(c) {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(''));
+    } catch(e) {
       return null;
     }
   }
   function tryBase64DecodeIfLooksLike(s) {
     if (!s || s.length < 8) return null;
-    // 判定为 base64 字符串（含 url-safe）
-    if (/^[A-Za-z0-9\-_+=\/]+$/.test(s.replace(/\s+/g, ''))) {
+    if (/^[A-Za-z0-9\-_+=\/]+$/.test(s.trim())) {
       return b64DecodeUnicode(s.trim());
     }
     return null;
   }
+  function splitOnce(str, sep) {
+    const idx = str.indexOf(sep);
+    if (idx === -1) return [str];
+    return [str.slice(0, idx), str.slice(idx + sep.length)];
+  }
+  function safeTrim(s) { return (s || '').trim(); }
+
   function parseParams(paramString) {
     const params = {};
     if (!paramString) return params;
-    paramString.split('&').forEach(kv => {
-      if (!kv) return;
-      const [k, ...rest] = kv.split('=');
+    paramString.split('&').forEach(p => {
+      if (!p) return;
+      const [k, ...rest] = p.split('=');
       const v = rest.join('=');
       if (!k) return;
       try { params[k] = decodeURIComponent(v || ''); } catch(e) { params[k] = v || ''; }
     });
     return params;
   }
-  function splitOnce(s, sep) {
-    const i = s.indexOf(sep);
-    if (i === -1) return [s];
-    return [s.slice(0, i), s.slice(i + sep.length)];
-  }
-  function safeTrim(s){ return (s||'').trim(); }
 
-  // ----------- node parsers -----------
-  function parseVmessLine(line) {
-    // vmess://<base64>[#name]
-    const withoutPrefix = line.replace(/^vmess:\/\//i, '');
-    const [payloadWithParams] = withoutPrefix.split('#');
-    const payload = payloadWithParams;
-    const dec = tryBase64DecodeIfLooksLike(payload) || payload;
-    let json = null;
-    try { json = JSON.parse(dec); } catch(e) {
-      // 有时 vmess:// 后直接是 JSON 字符串或带 params 的格式，尝试去除 prefix
+  // -------- protocol parsers (节点) --------
+  function parseVmess(line) {
+    // vmess://base64json
+    const without = line.replace(/^vmess:\/\//i, '');
+    const [payload, frag] = without.split('#');
+    let decoded = tryBase64DecodeIfLooksLike(payload) || payload;
+    let json;
+    try { json = JSON.parse(decoded); } catch(e) { 
+      // 有些 vmess 链接里直接是 JSON 后面带参数
       try { json = JSON.parse(decodeURIComponent(payload)); } catch(e2) { json = null; }
     }
     if (!json) return null;
-
-    const add = json.add || json.add || json.server || '';
-    const port = json.port || json.port || json.port || '';
-    const id = json.id || json.uuid || '';
+    const server = json.add || json.server || '';
+    const port = json.port || '';
+    const uuid = json.id || json.uuid || '';
     const ps = json.ps || json.remarks || json.remarks || '';
-    const net = (json.net || json.network || '').toLowerCase();
-    const tls = json.tls === 'tls' || json.tls === '1' || json.tls === true;
-    const host = json.host || json.sni || json.host || '';
+    const network = (json.net || json.network || '').toLowerCase();
+    const tls = (json.tls === 'tls' || json.tls === '1' || json.tls === true);
+    const host = json.host || json.sni || '';
     const path = json.path || json.wsPath || json.path || '';
     const alpn = json.alpn || '';
 
-    let lineOut = `vmess=${add}:${port}, method=none, password=${id}, fast-open=false, udp-relay=false, tag=${ps || (add + ':' + port)}`;
-    // network / obfs handling (依据 Quantumult X 示例)
-    if (net === 'ws') {
-      lineOut += ', obfs=' + (tls ? 'wss' : 'ws');
-      if (path) lineOut += `, obfs-uri=${path}`;
-      if (host) lineOut += `, obfs-host=${host}`;
+    let out = `vmess=${server}:${port}, method=none, password=${uuid}, tag=${ps || (server + ':' + port)}, fast-open=false, udp-relay=false`;
+    if (network === 'ws') {
+      out += `, obfs=${tls ? 'wss' : 'ws'}`;
+      if (path) out += `, obfs-uri=${path}`;
+      if (host) out += `, obfs-host=${host}`;
     } else {
       if (tls) {
-        lineOut += ', obfs=over-tls';
-        if (host) lineOut += `, obfs-host=${host}`;
+        out += `, obfs=over-tls`;
+        if (host) out += `, obfs-host=${host}`;
       }
-      // 对于其它传输（tcp/h2/quic）先不特殊处理，输出基本字段
+      // 其他网络类型暂不处理专门路径
     }
-    if (alpn) lineOut += `, alpn=${alpn}`;
-    return { type: 'vmess', name: ps || `${add}:${port}`, qx: lineOut, raw: line };
+    if (alpn) out += `, alpn=${alpn}`;
+    return { name: ps || (server + ':' + port), qx: out, raw: line };
   }
 
-  function parseSSLine(line) {
-    // ss:// base64 或 ss://method:pass@host:port#name 或带 ?plugin=
-    let rest = line.replace(/^ss:\/\//i, '');
+  function parseSS(line) {
+    // ss:// 或 ss://base64 或带 plugin
+    let l = line.replace(/^ss:\/\//i, '');
     let tag = '';
-    if (rest.includes('#')) {
-      const parts = rest.split('#');
-      rest = parts[0];
+    if (l.includes('#')) {
+      const parts = l.split('#');
+      l = parts[0];
       tag = decodeURIComponent(parts.slice(1).join('#')) || '';
     }
-    // 如果 rest 不含 '@'，可能是 base64
-    let info = '';
-    if (rest.indexOf('@') === -1) {
-      // rest 可能是 base64 或 base64url
-      const dec = tryBase64DecodeIfLooksLike(rest) || rest;
+    // plugin 部分
+    const [main, pluginPart] = splitOnce(l, '?');
+    let info = main;
+    // 如果没有 '@'，可能是 base64
+    if (!main.includes('@')) {
+      const dec = tryBase64DecodeIfLooksLike(main) || main;
       info = dec;
-    } else {
-      info = rest;
     }
-    // info 可能包含 ?plugin=...
-    const [beforeQ, afterQ] = splitOnce(info, '?');
-    const main = beforeQ;
-    const pluginStr = afterQ || '';
-    // main 可能是 method:password@host:port or method:password@ipv6:port
-    const m = main.match(/^([^:]+):([^@]+)@(.+):(\d+)$/);
+    const m = info.match(/^([^:]+):([^@]+)@([^:]+):(\d+)$/);
     if (!m) return null;
     const method = m[1];
-    const password = m[2];
+    const passwd = m[2];
     const host = m[3];
     const port = m[4];
     let obfs = '';
     let obfsHost = '';
     let obfsUri = '';
-
-    if (pluginStr) {
-      // plugin=obfs-local;obfs=http;obfs-host=bing.com;obfs-uri=/x
-      const kvs = pluginStr.split(';');
+    if (pluginPart) {
+      const kvs = pluginPart.split(';');
       kvs.forEach(kv => {
         const [k, v] = splitOnce(kv, '=');
-        const kk = (k||'').toLowerCase();
-        if (kk.includes('obfs')) {
-          if (v) {
-            if (v === 'http' || v === 'tls' || v === 'wss' || v === 'ws') obfs = v === 'tls' ? 'wss' : v;
-            else if (v.startsWith('obfs=')) obfs = v.replace('obfs=', '');
-          }
+        if (!k) return;
+        const kl = k.toLowerCase();
+        if (kl === 'plugin' && v) {
+          // plugin=obfs-local;obfs=http; …
+          // 可能多个插件参数
         }
-        if (kk === 'obfs-host') obfsHost = v || '';
-        if (kk === 'obfs-uri') obfsUri = v || '';
+        if (kl.includes('obfs') && v) {
+          if (v === 'http' || v === 'ws' || v === 'wss') obfs = v;
+        }
+        if (kl === 'obfs-host') obfsHost = v || '';
+        if (kl === 'obfs-uri') obfsUri = v || '';
       });
     }
-
-    let lineOut = `shadowsocks=${host}:${port}, method=${method}, password=${password}, fast-open=false, udp-relay=false, tag=${tag || `${host}:${port}`}`;
-    if (obfs) lineOut += `, obfs=${obfs}`;
-    if (obfsHost) lineOut += `, obfs-host=${obfsHost}`;
-    if (obfsUri) lineOut += `, obfs-uri=${obfsUri}`;
-    return { type: 'ss', name: tag || `${host}:${port}`, qx: lineOut, raw: line };
+    let out = `shadowsocks=${host}:${port}, method=${method}, password=${passwd}, tag=${tag || (host + ':' + port)}, fast-open=false, udp-relay=false`;
+    if (obfs) out += `, obfs=${obfs}`;
+    if (obfsHost) out += `, obfs-host=${obfsHost}`;
+    if (obfsUri) out += `, obfs-uri=${obfsUri}`;
+    return { name: tag || (host + ':' + port), qx: out, raw: line };
   }
 
-  function parseSSRLine(line) {
-    // ssr://<base64>
-    const payload = line.replace(/^ssr:\/\//i, '');
-    const dec = tryBase64DecodeIfLooksLike(payload);
-    if (!dec) return null;
-    // SSR 格式: host:port:protocol:method:obfs:base64(pass)/?param=base64
-    const [main, paramsPart] = splitOnce(dec, '/?');
-    const parts = main.split(':');
-    if (parts.length < 6) return null;
-    const host = parts[0], port = parts[1], protocol = parts[2], method = parts[3], obfs = parts[4];
-    const passB64 = parts.slice(5).join(':'); // base64 password
-    const password = b64DecodeUnicode(passB64) || passB64;
-    // parse params
-    const params = {};
-    if (paramsPart) {
-      paramsPart.split('&').forEach(kv => {
-        const [k, v] = splitOnce(kv, '=');
-        if (k && v) params[k] = b64DecodeUnicode(v) || v;
-      });
-    }
-    const remarks = params.remarks || params.remark || '';
-    const group = params.group || '';
-    // build qx shadowsocks with ssr extras
-    let lineOut = `shadowsocks=${host}:${port}, method=${method}, password=${password}, fast-open=false, udp-relay=false, tag=${remarks || (host + ':' + port)}`;
-    // SSR 特有
-    if (protocol) lineOut += `, ssr-protocol=${protocol}`;
-    if (params.protoparam) lineOut += `, ssr-protocol-param=${params.protoparam}`;
-    if (obfs) lineOut += `, obfs=${obfs}`;
-    if (params.obfsparam) lineOut += `, obfs-host=${params.obfsparam}`;
-    return { type: 'ssr', name: remarks || `${host}:${port}`, qx: lineOut, raw: line };
-  }
-
-  function parseTrojanLine(line) {
-    // trojan://password@host:port#tag or with ?sni=...
-    // remove trojan://
-    let rest = line.replace(/^trojan:\/\//i, '');
+  function parseTrojan(line) {
+    // trojan://password@host:port etc
+    let l = line.replace(/^trojan:\/\//i, '');
     let tag = '';
-    if (rest.includes('#')) {
-      const parts = rest.split('#');
-      rest = parts[0];
+    if (l.includes('#')) {
+      const parts = l.split('#');
+      l = parts[0];
       tag = decodeURIComponent(parts.slice(1).join('#')) || '';
     }
-    // rest could have ?params
-    const [main, paramsStr] = splitOnce(rest, '?');
+    const [main, paramPart] = splitOnce(l, '?');
     const m = main.match(/^([^@]+)@(.+):(\d+)$/);
     if (!m) return null;
-    const password = m[1], host = m[2], port = m[3];
+    const passwd = m[1];
+    const host = m[2];
+    const port = m[3];
     const params = {};
-    if (paramsStr) {
-      paramsStr.split('&').forEach(kv => {
-        const [k, v] = splitOnce(kv, '=');
+    if (paramPart) {
+      paramPart.split('&').forEach(p => {
+        const [k,v] = splitOnce(p, '=');
         if (k) params[k] = v || '';
       });
     }
-    const sni = params.sni || params.sni || '';
-    let lineOut = `trojan=${host}:${port}, password=${password}, over-tls=true, tls-verification=false, fast-open=false, udp-relay=false, tag=${tag || `${host}:${port}`}`;
-    if (sni) lineOut += `, tls-host=${sni}`;
-    return { type: 'trojan', name: tag || `${host}:${port}`, qx: lineOut, raw: line };
+    let out = `trojan=${host}:${port}, password=${passwd}, tag=${tag || (host + ':' + port)}, over-tls=true, tls-verification=false, fast-open=false, udp-relay=false`;
+    if (params.sni) out += `, tls-host=${params.sni}`;
+    return { name: tag || (host + ':' + port), qx: out, raw: line };
   }
 
   function parseQXNative(line) {
-    // 如果已经是 Quantumult X 格式的 server 行（vmess= / shadowsocks= / trojan=），直接认为是原样通过
-    const m = line.match(/^(vmess=|shadowsocks=|shadowsocks-v2=|trojan=)/i);
+    // 如果已经是 QX 支持格式，直接返回
+    const m = line.match(/^(vmess=|shadowsocks=|trojan=)/i);
     if (m) {
-      // try to extract tag=... if exists
+      // 提取 tag
       const tagMatch = line.match(/tag=([^,]+)/i);
-      const name = tagMatch ? safeTrim(tagMatch[1]) : (line.slice(0, 40).trim());
-      return { type: 'native', name: name, qx: line.trim(), raw: line };
+      const name = tagMatch ? safeTrim(tagMatch[1]) : safeTrim(line.slice(0, 40));
+      return { name: name, qx: safeTrim(line), raw: line };
     }
     return null;
   }
@@ -236,245 +182,157 @@
   function parseNodeLine(line) {
     line = safeTrim(line);
     if (!line) return null;
-    // try native first
+    // native
     const native = parseQXNative(line);
     if (native) return native;
-    if (/^vmess:\/\//i.test(line)) return parseVmessLine(line);
-    if (/^ssr:\/\//i.test(line)) return parseSSRLine(line);
-    if (/^ss:\/\//i.test(line)) return parseSSLine(line);
-    if (/^trojan:\/\//i.test(line)) return parseTrojanLine(line);
-    // maybe it's a plain "scheme://addr" or plain "host:port,..."? if line contains '://' but not recognized, skip
+    if (/^vmess:\/\//i.test(line)) return parseVmess(line);
+    if (/^ssr:\/\//i.test(line)) return null; // SSR 若要支持, 可以在此实现
+    if (/^ss:\/\//i.test(line)) return parseSS(line);
+    if (/^trojan:\/\//i.test(line)) return parseTrojan(line);
     return null;
   }
 
-  // ----------- rules parser -----------
+  // -------- rules parser --------
   function convertRuleLine(line) {
-    // Trim and ignore comments
-    const t = safeTrim(line);
-    if (!t || /^;|^#|^\/\//.test(t)) return null;
+    const l = safeTrim(line);
+    if (!l) return null;
+    // ignore comments
+    if (/^#|^;|^\/\//.test(l)) return null;
 
-    // Surge/Shadowrocket style: TYPE,pattern,action[,extra...]
-    // Quantumult X style expected: host|host-suffix|host-keyword|ip-cidr|ip6-cidr|geoip|final|user-agent|url-regex
-    // mapping:
-    const typeMap = {
-      'DOMAIN-SUFFIX': 'host-suffix',
-      'DOMAIN-KEYWORD': 'host-keyword',
-      'DOMAIN': 'host',
-      'IP-CIDR': 'ip-cidr',
-      'IP-CIDR6': 'ip6-cidr',
-      'GEOIP': 'geoip',
-      'FINAL': 'final',
-      'USER-AGENT': 'user-agent',
-      'URL-REGEX': 'url-regex',
-      'REGEX': 'url-regex',
-      'PROCESS-NAME': 'process-name' // may not be supported; passthrough
-    };
+    const parts = l.split(',');
+    if (parts.length < 2) return l; // 无法拆成 TYPE,pattern,action,直接返回
 
-    const parts = t.split(',');
-    if (parts.length < 2) {
-      // maybe already quantumult style like "host, domain, proxy"
-      return t;
-    }
-    const t0 = parts[0].toUpperCase();
-    let rest = parts.slice(1).map(s => safeTrim(s));
-    if (typeMap[t0]) {
-      const newType = typeMap[t0];
-      // ensure action exist: last field is action
-      const action = rest[rest.length - 1];
-      const pat = rest.slice(0, rest.length - 1).join(',');
-      let out = `${newType}, ${pat}, ${action}`;
-      return out;
-    } else {
-      // already qx style or unknown -> try to normalize some lowercase keys
-      return t;
+    const type = parts[0].toUpperCase().trim();
+    const pattern = parts[1].trim();
+    const action = parts[2] ? safeTrim(parts[2]) : '';
+
+    switch (type) {
+      case 'DOMAIN-SUFFIX':
+        return `host-suffix, ${pattern}, ${action}`;
+      case 'DOMAIN-KEYWORD':
+        return `host-keyword, ${pattern}, ${action}`;
+      case 'DOMAIN':
+        return `host, ${pattern}, ${action}`;
+      case 'IP-CIDR':
+        return `ip-cidr, ${pattern}, ${action}`;
+      case 'FINAL':
+        return `final, ${action}`;
+      // 可以加更多 Surge 类型支持
+      default:
+        // 如果已经是 QX style (host-suffix, host, etc)，或其他类型则返回原行
+        return l;
     }
   }
 
-  // ----------- item filters / rename / sort -----------
-  function matchesKeywordAny(name, keywords) {
-    if (!keywords) return false;
-    return keywords.split('+').some(kw => kw && name.indexOf(kw) !== -1);
-  }
-
-  function filterItemsByParams(items, params) {
-    return items.filter(item => {
-      if (!item) return false;
-      // in: 必须包含任意关键词
-      if (params.in && !matchesKeywordAny(item.name || item.qx || item.raw || '', params.in)) return false;
-      // out: 含有任意关键词则排除
-      if (params.out && matchesKeywordAny(item.name || item.qx || item.raw || '', params.out)) return false;
-      // regex: 保留匹配 regex 的
+  // -------- filter / rename / sort --------
+  function filterItems(items, params) {
+    return items.filter(it => {
+      if (!it) return false;
+      // in
+      if (params.in && !(it.name && it.name.includes(params.in))) return false;
+      // out
+      if (params.out && it.name && it.name.includes(params.out)) return false;
       if (params.regex) {
         try {
           const re = new RegExp(params.regex);
-          if (!re.test(item.qx || item.raw || item.name || '')) return false;
-        } catch (e) { /* ignore invalid regex */ }
-      }
-      if (params.regout) {
-        try {
-          const re = new RegExp(params.regout);
-          if (re.test(item.qx || item.raw || item.name || '')) return false;
+          if (!(it.raw && re.test(it.raw))) return false;
         } catch(e) {}
       }
       return true;
     });
   }
-
-  function applyRename(items, params) {
+  function renameItems(items, params) {
     if (!params.rename) return items;
-    // 支持多条 rename，以 + 分隔，格式 old@new；也支持 @suffix 或 prefix@
-    const ops = params.rename.split('+').map(s => s.trim()).filter(Boolean);
-    return items.map(item => {
-      let name = item.name || '';
+    const ops = params.rename.split('+');
+    return items.map(it => {
+      let name = it.name || '';
       ops.forEach(op => {
         const [oldStr, newStr] = splitOnce(op, '@');
         if (newStr !== undefined && oldStr) {
-          // old@new
-          try { name = name.replace(new RegExp(oldStr, 'g'), newStr); } catch(e) { name = name.split(oldStr).join(newStr); }
+          name = name.split(oldStr).join(newStr);
         } else if (op.startsWith('@')) {
           name = name + op.slice(1);
         } else if (op.endsWith('@')) {
           name = op.slice(0, -1) + name;
         }
       });
-      item.name = name;
-      // also try to replace tag= in qx if present
-      if (item.qx && item.qx.indexOf('tag=') !== -1) {
-        item.qx = item.qx.replace(/tag=[^,]+/, 'tag=' + name);
+      it.name = name;
+      // 如果 qx 格式中有 tag=, 替换
+      if (it.qx && it.qx.includes('tag=')) {
+        it.qx = it.qx.replace(/tag=[^,]+/, 'tag=' + name);
       }
-      return item;
+      return it;
     });
   }
-
-  function applySort(items, params) {
+  function sortItems(items, params) {
     if (!params.sort) return items;
-    if (params.sort === '1') return items.sort((a,b) => (a.name||'').localeCompare(b.name||''));
-    if (params.sort === '-1') return items.sort((a,b) => (b.name||'').localeCompare(a.name||''));
-    if (params.sort.toLowerCase() === 'x') return items.sort(() => Math.random()-0.5);
+    if (params.sort === '1') {
+      return items.sort((a,b) => (a.name||'').localeCompare(b.name||''));
+    }
+    if (params.sort === '-1') {
+      return items.sort((a,b) => (b.name||'').localeCompare(a.name||''));
+    }
+    if (params.sort.toLowerCase() === 'x') {
+      return items.sort(() => Math.random() - 0.5);
+    }
     return items;
   }
 
-  // ----------- main processors -----------
-  function processNodes(resourceText, params) {
-    // resourceText 可能是整包 base64（多数订阅），尝试 decode
-    let text = resourceText;
-    const tryDec = tryBase64DecodeIfLooksLike(resourceText.replace(/\s+/g, ''));
-    if (tryDec && (tryDec.indexOf('vmess://') !== -1 || tryDec.indexOf('ss://') !== -1 || tryDec.indexOf('ssr://') !== -1 || tryDec.indexOf('trojan://') !== -1)) {
-      text = tryDec;
-    }
-    // split lines by newline and also comma-separated lists sometimes
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l);
-    const items = [];
-    lines.forEach(line => {
-      // some providers pack many uri in one long line separated by comma/space, avoid splitting wrong — keep per-line handling
-      // attempt parse
-      const parsed = parseNodeLine(line);
-      if (parsed) items.push(parsed);
-      else {
-        // if not parsed, maybe the line contains multiple "vmess://" entries glued; try to extract them
-        const found = [];
-        const vmessMatches = line.match(/vmess:\/\/[A-Za-z0-9\-_+=\/]+/g);
-        if (vmessMatches) vmessMatches.forEach(m => { const p = parseVmessLine(m); if (p) found.push(p); });
-        const ssMatches = line.match(/ssr?:\/\/[A-Za-z0-9\-_+=\/@:%?\.]+/g);
-        if (ssMatches) ssMatches.forEach(m => { const p = m.startsWith('ssr://') ? parseSSRLine(m) : parseSSLine(m); if (p) found.push(p); });
-        const trMatches = line.match(/trojan:\/\/[^,\s]+/g);
-        if (trMatches) trMatches.forEach(m => { const p = parseTrojanLine(m); if (p) found.push(p); });
-        if (found.length) found.forEach(f => items.push(f));
-      }
-    });
-
-    // 应用过滤/重命名/排序
-    let filtered = filterItemsByParams(items, params);
-    filtered = applyRename(filtered, params);
-    filtered = applySort(filtered, params);
-
-    // 最后输出 qx 行，一行一个节点
-    return filtered.map(i => i.qx).join('\n');
-  }
-
-  function processFilterRules(resourceText, params) {
-    // resourceText 通常是规则文件，按行转换
-    // 同样先尝试 base64 解包
-    let text = resourceText;
-    const tryDec = tryBase64DecodeIfLooksLike(resourceText.replace(/\s+/g, ''));
-    if (tryDec && tryDec.indexOf(',') !== -1) text = tryDec;
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && !/^\s*(#|;|\/\/)/.test(l));
-    // convert
-    let items = lines.map((l, idx) => {
-      const conv = convertRuleLine(l) || l;
-      return { full: conv, name: conv, raw: l };
-    });
-    // filter
-    items = filterItemsByParams(items, params);
-    // rename (对规则名的 rename 通常没意义，但尝试替换 full 内容中的关键词)
-    if (params.rename) {
-      const ops = params.rename.split('+').map(s => s.trim()).filter(Boolean);
-      items = items.map(it => {
-        let f = it.full;
-        ops.forEach(op => {
-          const [oldStr, newStr] = splitOnce(op, '@');
-          if (newStr !== undefined && oldStr) {
-            try { f = f.replace(new RegExp(oldStr, 'g'), newStr); } catch(e) { f = f.split(oldStr).join(newStr); }
-          } else if (op.startsWith('@')) {
-            f = f + op.slice(1);
-          } else if (op.endsWith('@')) {
-            f = op.slice(0, -1) + f;
-          }
-        });
-        return { ...it, full: f };
-      });
-    }
-    // sort
-    items = applySort(items, params);
-
-    // 如果有 policy 参数，尝试在每条规则后追加 ",policy=NAME"（注意：Quantumult X 的规则语法对附加字段接受度会受版本影响）
-    if (params.policy) {
-      items = items.map(it => {
-        if (it.full.indexOf(',policy=') === -1) return { ...it, full: it.full + `,policy=${params.policy}` };
-        return it;
-      });
-    }
-    return items.map(it => it.full).join('\n');
-  }
-
-  // ----------- entrypoint -----------
-  function isNodeResource(text) {
-    return /vmess:\/\//i.test(text) || /ssr?:\/\//i.test(text) || /trojan:\/\//i.test(text) || /shadowsocks=|vmess=|trojan=/i.test(text);
-  }
-  function isFilterResource(url, text) {
-    // 如果文件名是 .list/.rule/.txt 或包含常见规则关键字，判定为规则文件
-    if (/(\.list|\.rule|filter|rules|rule|acl)\b/i.test(url)) return true;
-    // 判定内容是否多为以逗号分隔的规则行
-    const sample = text.split(/\r?\n/).slice(0,50).join('\n');
-    if (/(DOMAIN-SUFFIX|DOMAIN-KEYWORD|IP-CIDR|FINAL|GEOIP|REGEX|URL-REGEX)/i.test(sample)) return true;
-    // fallback: if many lines include commas and not protocol prefixes, treat as rules
-    const lines = text.split(/\r?\n/).filter(Boolean);
-    const commaLines = lines.filter(l => l.indexOf(',') !== -1).length;
-    if (commaLines / Math.max(1, lines.length) > 0.5) return true;
+  // -------- main parse logic --------
+  function isRuleFile(url, content) {
+    // 判断是否是规则集
+    if (/(\.rule|\.list|filter|rules)\b/i.test(url)) return true;
+    // 看内容是否有 Surge 样式规则关键词
+    const sample = content.split('\n').slice(0, 20).join('\n');
+    if (/(DOMAIN-SUFFIX|DOMAIN-KEYWORD|IP-CIDR|FINAL)/i.test(sample)) return true;
     return false;
   }
 
-  function main(url, resourceText) {
-    // url 可能包含参数 #in=...&out=...
+  function isNodeFile(content) {
+    if (/^vmess:\/\//i.test(content) || /^ss:\/\//i.test(content) || /^trojan:\/\//i.test(content)) return true;
+    return false;
+  }
+
+  function process(url, content) {
     const [baseUrl, paramString] = url.split('#');
-    const params = parseParams(paramString || '');
-    // decide type
-    if (isNodeResource(resourceText)) {
-      return processNodes(resourceText, params);
-    } else if (isFilterResource(baseUrl || '', resourceText)) {
-      return processFilterRules(resourceText, params);
+    const params = parseParams(paramString);
+
+    if (isRuleFile(baseUrl, content)) {
+      // 转换规则
+      const lines = content.split('\n');
+      const got = lines.map(line => {
+        const conv = convertRuleLine(line);
+        return conv;
+      }).filter(l => l !== null);
+      // 过滤 / 重命名 / 排序
+      let items = got.map(l => ({ full: l, name: l, raw: l }));
+      items = filterItems(items, params);
+      items = renameItems(items, params);
+      items = sortItems(items, params);
+      if (params.policy) {
+        items = items.map(it => {
+          if (!it.full.includes(',policy=')) {
+            it.full = it.full + `,policy=${params.policy}`;
+          }
+          return it;
+        });
+      }
+      return items.map(it => it.full).join('\n');
+    } else if (isNodeFile(content)) {
+      const lines = content.split('\n');
+      const items = lines.map(l => {
+        const p = parseVmess(l) || parseSS(l) || parseTrojan(l) || parseQXNative(l);
+        return p;
+      }).filter(p => p !== null);
+      let filtered = filterItems(items, params);
+      filtered = renameItems(filtered, params);
+      filtered = sortItems(filtered, params);
+      return filtered.map(it => it.qx).join('\n');
     } else {
-      // 尝试两者处理：先节点再规则（取决于实际内容）
-      if (/vmess:\/\//i.test(resourceText) || /ssr?:\/\//i.test(resourceText) || /ss:\/\//i.test(resourceText)) {
-        return processNodes(resourceText, params);
-      }
-      if (/(DOMAIN-SUFFIX|IP-CIDR|FINAL|host-suffix|host-keyword)/i.test(resourceText)) {
-        return processFilterRules(resourceText, params);
-      }
-      // fallback: 原样返回
-      return resourceText;
+      // 两者都不是，默认原样返回
+      return content;
     }
   }
 
-  return { parse: main };
+  return { parse: process };
 })();
