@@ -1,41 +1,54 @@
 /**
- * Quantumult X 规则解析器
- * 功能：将原始规则集转换为 Quantumult X 可识别的规则格式
+ * Quantumult X 分流规则解析器（可直接抓取远程规则）
+ * 用途：将小火箭/远程规则集转换成 QX 可识别规则
  */
 
-const inputURL = "https://whatshub.top/rule/Google.list"; // 原始规则集 URL
-const defaultProxy = "Proxy"; // 默认策略组名
+const REMOTE_URL = "https://whatshub.top/rule/Google.list"; // 远程规则集 URL
+const DEFAULT_PROXY = "Proxy"; // 默认策略组名
 
-$task.fetch(inputURL).then(response => {
+$task.fetch(REMOTE_URL).then(response => {
     const raw = response.body;
-    const lines = raw.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
 
-    const convertedRules = lines.map(line => {
-        const [type, value] = line.split(',').map(part => part.trim());
-        if (!type || !value) return null;
+    // 按行分割，并过滤掉空行和注释
+    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+
+    const rules = [];
+
+    lines.forEach(line => {
+        let type, value;
+
+        // 检查常见分隔符
+        if (line.includes(',')) {
+            [type, value] = line.split(',').map(s => s.trim());
+        } else if (line.includes('|')) {
+            [type, value] = line.split('|').map(s => s.trim());
+        } else {
+            // 如果行只有一个值，默认为 DOMAIN-SUFFIX
+            type = 'DOMAIN-SUFFIX';
+            value = line;
+        }
+
+        if (!type || !value) return;
 
         switch (type.toUpperCase()) {
             case 'DOMAIN-SUFFIX':
-                return `DOMAIN-SUFFIX,${value},${defaultProxy}`;
             case 'DOMAIN':
-                return `DOMAIN,${value},${defaultProxy}`;
             case 'IP-CIDR':
-                return `IP-CIDR,${value},${defaultProxy}`;
             case 'GEOIP':
-                return `GEOIP,${value},${defaultProxy}`;
+                rules.push(`${type.toUpperCase()},${value},${DEFAULT_PROXY}`);
+                break;
             case 'FINAL':
-                return `FINAL,DIRECT`;
+                rules.push(`FINAL,DIRECT`);
+                break;
             default:
-                return null;
+                // 忽略未知类型
+                break;
         }
-    }).filter(Boolean);
+    });
 
-    const output = [
-        '# 规则列表',
-        ...convertedRules
-    ].join('\n');
-
+    const output = rules.join('\n');
     $done({ body: output });
+
 }).catch(err => {
     $done({ body: `解析失败: ${err.message}` });
 });
