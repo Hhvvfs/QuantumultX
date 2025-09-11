@@ -1,11 +1,10 @@
 // rule-parser.js
-// Quantumult X 规则集解析器（专为规则集格式设计，如 AdBlock/DNSmasq 列表）
-// 基于 KOP-XIAO 的资源解析器精简版，专注于规则解析
-// 支持 DOMAIN-SET 格式或其他规则集的转换
-// 使用方法：在 Quantumult X 配置中设置 resource_parser_url = https://your-url/rule-parser.js
-// 示例订阅链接：https://whatshub.top/rule/Google.list#type=domain-set&policy=Shawn
+// Quantumult X 规则集解析器（专为规则集格式设计，如 AdBlock/DOMAIN-SET）
+// 针对 https://whatshub.top/rule/Google.list 优化
+// 使用方法：在 [general] 中设置 resource_parser_url = https://your-url/rule-parser.js
+// 示例订阅链接：https://whatshub.top/rule/Google.list#type=domain-set&policy=Proxy&in=google
 
-// Base64 编码/解码工具（用于输出编码，如果需要）
+// Base64 编码/解码工具
 function Base64Code() {
   const b64chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   const b64tab = (function(bin) {
@@ -70,8 +69,8 @@ function Type_Check(subs) {
   const subi = subs.toLowerCase().replace(/ /g, "");
   const lines = subs.split("\n").filter(Boolean);
   
-  // 检查是否为域名列表（domain-set 或 HOST）
-  if (lines.length > 0 && lines.every(line => /^[\w\.-]+\.(com|org|net|io|top|google|etc)$/i.test(line.trim()) || line.startsWith("||") || line.startsWith("http"))) {
+  // 检查是否为域名列表（DOMAIN-SET）
+  if (lines.length > 0 && lines.every(line => /^[\w\.-]+\.(com|org|net|io|top|google|etc)$/i.test(line.trim()) || line.startsWith("||"))) {
     return "domain-set";
   }
   
@@ -106,52 +105,50 @@ function FilterRules(rules, pin, pout) {
 }
 
 // 正则保留/删除
-function RegexFilter(rule) {
+function RegexFilter(rule, regex) {
   if (regex) {
     try {
       if (!rule.match(new RegExp(regex, "i"))) return null;
     } catch (e) {
       console.error("Regex error:", e);
+      return rule; // 容错
     }
   }
   return rule;
 }
 
-function RegexOutFilter(rule) {
+function RegexOutFilter(rule, regout) {
   if (regout) {
     try {
       if (rule.match(new RegExp(regout, "i"))) return null;
     } catch (e) {
       console.error("RegexOut error:", e);
+      return rule; // 容错
     }
   }
   return rule;
 }
 
 // AdBlock 到 Quantumult X 规则转换
-function AdBlockToQX(content) {
-  const lines = content.split("\n").filter(Boolean).map(line => line.trim());
+function AdBlockToQX(content, policy) {
+  const lines = content.split("\n").filter(line => line.trim() && !line.startsWith("!") && !line.startsWith("[") && !line.startsWith("#"));
   let qxRules = [];
   for (let line of lines) {
-    // 跳过注释
-    if (line.startsWith("!") || line.startsWith("[") || line === "") continue;
-    
-    // 处理 AdBlock 规则
     if (line.startsWith("||")) {
-      // ||example.com^ -> DOMAIN-SUFFIX,example.com
       let domain = line.replace("||", "").replace("^", "").replace("*.", "");
       if (domain.endsWith("^")) domain = domain.slice(0, -1);
-      qxRules.push(`DOMAIN-SUFFIX,${domain},Shawn`);
-    } else if (line.startsWith("http")) {
-      // URL 规则 -> URL-REGEX
-      qxRules.push(`URL-REGEX,${line},Shawn`);
+      qxRules.push(`DOMAIN-SUFFIX,${domain},${policy}`);
     } else if (line.includes(".")) {
-      // 简单域名 -> DOMAIN
-      qxRules.push(`DOMAIN,${line},Shawn`);
+      qxRules.push(`DOMAIN,${line},${policy}`);
     }
-    // 可以扩展更多 AdBlock 规则处理
+    // 扩展其他 AdBlock 规则（如 @@ 为白名单）
+    else if (line.startsWith("@@||")) {
+      domain = line.replace("@@||", "").replace("^", "").replace("*.", "");
+      if (domain.endsWith("^")) domain = domain.slice(0, -1);
+      qxRules.push(`DOMAIN-SUFFIX,${domain},DIRECT`);
+    }
   }
-  return qxRules.join("\n");
+  return qxRules.filter(Boolean).join("\n");
 }
 
 // 域名列表到 DOMAIN-SET 转换
@@ -161,34 +158,11 @@ function DomainListToSet(content, policy) {
     .map(line => line.trim().replace(/^(\|\||https?:\/\/)/, "").replace(/\^.*$/, ""))
     .filter(domain => domain.includes(".") && !domain.startsWith("http"));
   
-  // 生成 DOMAIN-SET 格式
+  if (domains.length === 0) return "";
+  
   let setContent = `[${policy}]\n`;
   setContent += domains.map(domain => `host-suffix,${domain}`).join("\n");
-  
-  // Base64 编码 DOMAIN-SET（Quantumult X 标准）
   return `data:application/vnd.quantumultx.domain-set;base64,${Base64.encode(setContent)}`;
-}
-
-// Surge RULE-SET 到 QX 转换（简化）
-function SurgeRuleSetToQX(content, policy) {
-  // 假设 content 是 Surge RULE-SET 的 YAML 内容
-  try {
-    const yamlData = YAML.parse(content);
-    // 处理 payload 中的规则
-    if (yamlData.payload) {
-      return yamlData.payload.map(rule => {
-        // 示例转换：Surge domain -> QX DOMAIN
-        if (rule.startsWith("DOMAIN-SUFFIX")) {
-          const parts = rule.split(",");
-          return `DOMAIN-SUFFIX,${parts[1]},${policy}`;
-        }
-        return rule; // 其他规则直接使用
-      }).join("\n");
-    }
-  } catch (e) {
-    $notify("⚠️", "Surge RULE-SET 解析失败", String(e));
-  }
-  return content; // 回退到原始内容
 }
 
 // 主解析函数（针对规则集）
@@ -196,20 +170,23 @@ function RuleParse() {
   const link0 = $resource.link || "";
   let content0 = $resource.content || "";
   const subtag = $resource.tag || "Rule Set";
-  const typeU = $resource.type || "";
+
+  // 检查内容是否有效
+  if (!content0 || content0.trim() === "") {
+    $notify("❌ 内容为空", `${subtag} 没有获取到有效内容`, "请检查链接", { "open-url": link0 });
+    return $done({ content: "" });
+  }
 
   // 参数解析
   const params = parseParameters(link0);
   let { type, policy, in: Pin0, out: Pout0, regex, regout, hide, ntf } = params;
-  if (typeU) type = typeU; // 强制类型
-
-  // 通知开关
   const showNotify = ntf != 0;
 
   const detectedType = Type_Check(content0);
-  if (showNotify && detectedType !== type) {
+  if (showNotify && detectedType !== type && type !== "unknown") {
     $notify("⚠️ 类型不匹配", `检测到 ${detectedType}，但指定 ${type}`, "继续使用指定类型");
   }
+  if (type === "unknown") type = detectedType;
 
   let total = "";
   let ruleCount = 0;
@@ -219,50 +196,38 @@ function RuleParse() {
     total = DomainListToSet(content0, policy);
     ruleCount = content0.split("\n").filter(Boolean).length;
   } else if (type === "adblock" || detectedType === "adblock") {
-    let rules = AdBlockToQX(content0).split("\n").filter(Boolean);
+    let rules = AdBlockToQX(content0, policy).split("\n").filter(Boolean);
     if (Pin0 || Pout0) rules = FilterRules(rules, Pin0, Pout0);
-    if (regex) rules = rules.map(RegexFilter).filter(Boolean);
-    if (regout) rules = rules.map(RegexOutFilter).filter(Boolean);
-    total = rules.join("\n");
-    ruleCount = rules.length;
-  } else if (type === "surge-rule-set" || detectedType === "surge-rule-set") {
-    total = SurgeRuleSetToQX(content0, policy);
-    ruleCount = total.split("\n").filter(Boolean).length;
-  } else if (type === "Rule") {
-    let rules = content0.split("\n").map(item => item.trim()).filter(Boolean);
-    if (Pin0 || Pout0) rules = FilterRules(rules, Pin0, Pout0);
-    if (regex) rules = rules.map(RegexFilter).filter(Boolean);
-    if (regout) rules = rules.map(RegexOutFilter).filter(Boolean);
+    if (regex) rules = rules.map(rule => RegexFilter(rule, regex)).filter(Boolean);
+    if (regout) rules = rules.map(rule => RegexOutFilter(rule, regout)).filter(Boolean);
     total = rules.join("\n");
     ruleCount = rules.length;
   } else {
-    $notify("❌ 未知规则格式", `不支持 ${detectedType} 或 ${type}`, "请检查链接或指定 type=domain-set 等", { "open-url": link0 });
-    return "";
+    $notify("❌ 未知规则格式", `不支持 ${detectedType} 或 ${type}`, "请指定 type=domain-set 或 adblock", { "open-url": link0 });
+    return $done({ content: "" });
   }
 
-  // 隐藏模式：不删除，而是注释规则（如果 hide=0）
+  // 隐藏模式：注释而非删除
   if (hide === 0 && (Pout0 || regout)) {
-    // 逻辑：对于被 out/regout 过滤的规则，使用 [reject] 或注释
-    // 这里简化：假设总规则中过滤掉的用 # 注释
-    // 实际实现需跟踪过滤的规则
-    total = total.replace(/^(.*)$/gm, (match, p1) => {
-      // 示例：如果规则包含 out 关键词，注释它
-      if (Pout0 && Pout0.some(kw => p1.includes(kw))) return `# ${p1}`;
-      return p1;
-    });
+    total = total.split("\n").map(line => {
+      if (Pout0 && Pout0.some(kw => line.includes(kw))) return `# ${line}`;
+      if (regout && line.match(new RegExp(regout, "i"))) return `# ${line}`;
+      return line;
+    }).join("\n");
   }
 
-  if (showNotify) {
+  if (showNotify && total) {
     $notify("✅ 规则解析成功", `${subtag}: ${ruleCount} 条规则`, `类型: ${type}, 策略: ${policy}`, { "open-url": link0 });
+  } else if (showNotify && !total) {
+    $notify("⚠️ 解析结果为空", `${subtag} 无有效规则`, "请检查链接或参数", { "open-url": link0 });
   }
 
-  return total;
+  return $done({ content: total });
 }
 
 // 主入口
 try {
-  const total = RuleParse();
-  $done({ content: total });
+  RuleParse();
 } catch (err) {
   $notify("❌ 规则解析失败", "发生错误", String(err), { "open-url": "https://t.me/Shawn_Parser_Bot" });
   $done({ content: "" });
