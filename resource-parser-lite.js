@@ -1,70 +1,73 @@
-/**
- * Quantumult X 小火箭规则转换器
- * 功能：
- * 1. 抓取远程规则（支持小火箭/SSR规则集）
- * 2. 自动转换不兼容格式为圈X可识别格式
- * 3. 输出 QX 可导入规则列表
- */
+import requests
+import re
 
-const REMOTE_URL = "https://whatshub.top/rule/Google.list"; // 远程规则URL
-const DEFAULT_PROXY = "Proxy"; // 默认策略组名
+# 配置
+URL = "https://whatshub.top/rule/Google.list"
+OUTPUT_FILE = "output_rules.conf"
+DEFAULT_POLICY = "PROXY"  # Quantumult X 策略组名，如 "PROXY"、"DIRECT"、"REJECT"
 
-$task.fetch(REMOTE_URL).then(response => {
-    const raw = response.body;
+def download_rules(url):
+    """从 URL 下载规则内容"""
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        return response.text.strip().splitlines()
+    except Exception as e:
+        print(f"下载失败: {e}")
+        return []
 
-    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+def parse_line_to_quantumult_rule(line):
+    """解析单行规则到 Quantumult X 格式
+    输入格式假设：
+    - 纯域名: example.com → HOST-SUFFIX,example.com,PROXY
+    - AdBlock 风格: ||example.com^ → HOST-SUFFIX,example.com,PROXY
+    - IP-CIDR: 192.168.1.0/24 → IP-CIDR,192.168.1.0/24,PROXY
+    """
+    line = line.strip()
+    if not line or line.startswith('#') or line.startswith('//'):  # 跳过注释
+        return None
+    
+    # 清理 AdBlock/Surge 风格: ||domain^ → domain
+    line = re.sub(r'^\|\|', '', line)  # 移除 ||
+    line = re.sub(r'\^$', '', line)    # 移除 ^
+    
+    # 检查是否为 IP-CIDR
+    if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(/\d{1,2})?$', line):
+        if '/' not in line:
+            line += '/32'  # 单 IP 默认 /32
+        return f"IP-CIDR,{line},{DEFAULT_POLICY}"
+    
+    # 域名处理：优先 HOST-SUFFIX（匹配子域名）
+    if '.' in line:
+        return f"HOST-SUFFIX,{line},{DEFAULT_POLICY}"
+    
+    return None
 
-    const rules = lines.map(line => {
-        // 分隔符，小火箭规则可能有逗号或竖线
-        let type, value;
-        if (line.includes(',')) {
-            [type, value] = line.split(',').map(s => s.trim());
-        } else if (line.includes('|')) {
-            [type, value] = line.split('|').map(s => s.trim());
-        } else {
-            // 仅一个值，默认为 DOMAIN-SUFFIX
-            type = 'DOMAIN-SUFFIX';
-            value = line;
-        }
+def main():
+    lines = download_rules(URL)
+    if not lines:
+        print("无规则内容，退出。")
+        return
+    
+    quantumult_rules = []
+    for i, line in enumerate(lines, 1):
+        rule = parse_line_to_quantumult_rule(line)
+        if rule:
+            quantumult_rules.append(rule)
+        if i % 100 == 0:  # 进度提示
+            print(f"已处理 {i} 行...")
+    
+    # 写入 Quantumult X 规则文件（纯文本格式）
+    with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
+        f.write("# Quantumult X Rules generated from Google.list\n")
+        for rule in quantumult_rules:
+            f.write(f"{rule}\n")
+    
+    print(f"转换完成！输出文件: {OUTPUT_FILE}")
+    print(f"总规则数: {len(quantumult_rules)}")
+    print("示例规则（前5条）:")
+    for rule in quantumult_rules[:5]:
+        print(f"- {rule}")
 
-        if (!type || !value) return null;
-
-        type = type.toUpperCase();
-
-        // 转换规则类型
-        switch(type){
-            case 'DOMAIN-SUFFIX':
-            case 'DOMAIN':
-            case 'IP-CIDR':
-            case 'GEOIP':
-                return `${type},${value},${DEFAULT_PROXY}`;
-            case 'DOMAIN-KEYWORD':
-                // QX 不支持 DOMAIN-KEYWORD，转换成 REGEX
-                // 转义特殊字符
-                const escaped = value.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-                return `REGEX,${escaped},${DEFAULT_PROXY}`;
-            case 'FINAL':
-                // 小火箭可能写 FINAL,REJECT 或 FINAL,Proxy
-                return `FINAL,DIRECT`;
-            case 'IP-CIDR6':
-                // IPv6 CIDR 转成 IP-CIDR（QX 也支持）
-                return `IP-CIDR,${value},${DEFAULT_PROXY}`;
-            case 'PROCESS-NAME':
-                // QX 不支持，转换为注释
-                return `# PROCESS-NAME,${value}`;
-            case 'URL-REGEX':
-            case 'REGEX':
-                // 直接保留 REGEX
-                return `REGEX,${value},${DEFAULT_PROXY}`;
-            default:
-                // 其他未知类型统一注释
-                return `# ${type},${value}`;
-        }
-    }).filter(Boolean);
-
-    const output = rules.join('\n');
-    $done({ body: output });
-
-}).catch(err => {
-    $done({ body: `解析失败: ${err.message}` });
-});
+if __name__ == "__main__":
+    main()
