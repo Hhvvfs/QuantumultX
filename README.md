@@ -33,4 +33,3 @@ https://raw.githubusercontent.com/Hhvvfs/QuantumultX/refs/heads/main/TeamViewer.
 
 https://raw.githubusercontent.com/Hhvvfs/QuantumultX/refs/heads/main/youtube.list
 
-https://raw.githubusercontent.com/Hhvvfs/QuantumultX/refs/heads/main/Telegram.list
