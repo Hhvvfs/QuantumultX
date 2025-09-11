@@ -4,7 +4,7 @@ GeoLite2数据库
 
 重写资源
 
-https://raw.githubusercontent.com/Hhvvfs/QuantumultX/refs/heads/main/youtube.conf
+https://raw.githubusercontent.com/Hhvvfs/QuantumultX/refs/heads/main/YouTube.conf
 
 https://raw.githubusercontent.com/Hhvvfs/QuantumultX/refs/heads/main/SpotifyPremium.conf
 
