@@ -1,35 +1,62 @@
 /**
- * Quantumult X 资源规则格式转换器（独立可用）
- * 将输入规则转换为 QX 可识别的格式
+ * Quantumult X 资源解析器
+ * 功能：
+ * 1. 抓取小火箭/远程规则集节点
+ * 2. 自动解析节点（V2Ray/SS/Trojan）
+ * 3. 解析规则并转换为 QX 格式
  */
 
-const inputURL = "https://example.com/rules.txt"; // 替换为你的规则文件 URL
+const inputURL = "https://example.com/remote-rules.txt"; // 远程规则/节点 URL
+const defaultProxyName = "Proxy"; // 转换后默认节点名称
 
 $task.fetch(inputURL).then(response => {
     const raw = response.body;
     const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
-    const converted = lines.map(line => {
-        const [type, value] = line.split(',');
-        switch (type.toUpperCase()) {
-            case 'DOMAIN-SUFFIX':
-                return `DOMAIN-SUFFIX,${value},Proxy`;
-            case 'DOMAIN':
-                return `DOMAIN,${value},Proxy`;
-            case 'IP-CIDR':
-                return `IP-CIDR,${value},Proxy`;
-            case 'GEOIP':
-                return `GEOIP,${value},Proxy`;
-            case 'FINAL':
-                return `FINAL,DIRECT`;
-            default:
-                return null;
-        }
-    }).filter(Boolean);
+    let nodeList = [];
+    let ruleList = [];
 
-    // 输出转换后的规则
-    const output = converted.join('\n');
-    $done({body: output});
+    lines.forEach(line => {
+        // 判断是否是节点（Vmess/SS/Trojan）
+        if (line.startsWith('vmess://') || line.startsWith('ss://') || line.startsWith('trojan://')) {
+            nodeList.push(line);
+        } else {
+            // 解析规则
+            const parts = line.split(',');
+            const type = parts[0].toUpperCase();
+            const value = parts[1];
+
+            switch (type) {
+                case 'DOMAIN-SUFFIX':
+                    ruleList.push(`DOMAIN-SUFFIX,${value},${defaultProxyName}`);
+                    break;
+                case 'DOMAIN':
+                    ruleList.push(`DOMAIN,${value},${defaultProxyName}`);
+                    break;
+                case 'IP-CIDR':
+                    ruleList.push(`IP-CIDR,${value},${defaultProxyName}`);
+                    break;
+                case 'GEOIP':
+                    ruleList.push(`GEOIP,${value},${defaultProxyName}`);
+                    break;
+                case 'FINAL':
+                    ruleList.push(`FINAL,DIRECT`);
+                    break;
+                default:
+                    break;
+            }
+        }
+    });
+
+    // 输出结果
+    const output = [
+        '# 节点列表',
+        ...nodeList,
+        '\n# 规则列表',
+        ...ruleList
+    ].join('\n');
+
+    $done({ body: output });
 }).catch(err => {
-    $done({body: `错误: ${err}`});
+    $done({ body: `解析失败: ${err}` });
 });
