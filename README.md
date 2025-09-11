@@ -34,5 +34,5 @@ https://raw.githubusercontent.com/Hhvvfs/QuantumultX/refs/heads/main/Spotify.lis
 
 https://raw.githubusercontent.com/Hhvvfs/QuantumultX/refs/heads/main/TeamViewer.list
 
-https://raw.githubusercontent.com/Hhvvfs/QuantumultX/refs/heads/main/youtube.list
+https://raw.githubusercontent.com/Hhvvfs/QuantumultX/refs/heads/main/YouTube.list
 
