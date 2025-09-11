@@ -1,3 +1,4 @@
+/** 
 //判断订阅类型
 function Type_Check(subs) {
     var type = "unknown"
