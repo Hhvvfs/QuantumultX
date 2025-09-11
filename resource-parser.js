@@ -1,8 +1,8 @@
-// rule-parser.js
-// Quantumult X 规则集解析器（专为规则集格式设计，如 AdBlock/DOMAIN-SET）
-// 针对 https://whatshub.top/rule/Google.list 优化
-// 使用方法：在 [general] 中设置 resource_parser_url = https://your-url/rule-parser.js
-// 示例订阅链接：https://whatshub.top/rule/Google.list#type=domain-set&policy=Proxy&in=google
+// domain-parser.js
+// Quantumult X 域名解析器（专为域名列表转换设计，基于 KOP-XIAO 的 resource-parser.js）
+// 专注于将域名列表（如 https://whatshub.top/rule/Google.list）转换为 HOST-SUFFIX 规则或 DOMAIN-SET 格式
+// 使用方法：在 [general] 中设置 resource_parser_url = https://your-url/domain-parser.js
+// 示例订阅链接：https://whatshub.top/rule/Google.list#policy=Proxy&in=google&out=ads
 
 // Base64 编码/解码工具
 function Base64Code() {
@@ -53,123 +53,54 @@ function parseParameters(link) {
   const para1 = para.includes("#") ? para.split("#")[1] : "";
   const mark0 = para.includes("#");
   return {
-    type: mark0 && para1.includes("type=") ? para1.split("type=")[1].split("&")[0] : "domain-set",
     policy: mark0 && para1.includes("policy=") ? decodeURIComponent(para1.split("policy=")[1].split("&")[0]) : "Shawn",
     in: mark0 && para1.includes("in=") ? para1.split("in=")[1].split("&")[0].split("+").map(decodeURIComponent) : null,
     out: mark0 && para1.includes("out=") ? para1.split("out=")[1].split("&")[0].split("+").map(decodeURIComponent) : null,
-    regex: mark0 && para1.includes("regex=") ? decodeURIComponent(para1.split("regex=")[1].split("&")[0]) : null,
-    regout: mark0 && para1.includes("regout=") ? decodeURIComponent(para1.split("regout=")[1].split("&")[0]) : null,
-    hide: mark0 && para1.includes("hide=") ? para1.split("hide=")[1].split("&")[0] : 0,
-    ntf: mark0 && para1.includes("ntf=") ? para1.split("ntf=")[1].split("&")[0] : 1
+    b64: mark0 && para1.includes("b64=") ? para1.split("b64=")[1].split("&")[0] : 0, // 是否 Base64 编码输出
+    ntf: mark0 && para1.includes("ntf=") ? para1.split("ntf=")[1].split("&")[0] : 1, // 通知开关
+    type: mark0 && para1.includes("type=") ? para1.split("type=")[1].split("&")[0] : "domain-set" // 强制类型
   };
 }
 
-// 类型检查（针对规则集）
+// 类型检测（仅限域名相关）
 function Type_Check(subs) {
   const subi = subs.toLowerCase().replace(/ /g, "");
   const lines = subs.split("\n").filter(Boolean);
   
-  // 检查是否为域名列表（DOMAIN-SET）
+  // 检查是否为域名列表
   if (lines.length > 0 && lines.every(line => /^[\w\.-]+\.(com|org|net|io|top|google|etc)$/i.test(line.trim()) || line.startsWith("||"))) {
     return "domain-set";
   }
-  
-  // AdBlock 格式检查（||domain^ 等）
-  if (subi.includes("||") || subi.includes("^") || subi.includes("@@")) {
-    return "adblock";
-  }
-  
-  // Surge RULE-SET 格式
-  if (subi.includes("payload:") || subi.includes("rule-set:")) {
-    return "surge-rule-set";
-  }
-  
-  // 其他规则格式
-  const RuleK = ["host,", "-suffix,", "domain,", "-keyword,", "ip-cidr,"];
-  if (RuleK.some(k => subi.includes(k))) {
-    return "Rule";
-  }
-  
   return "unknown";
+}
+
+// 域名列表转换为 HOST-SUFFIX 规则
+function Domain2QX(lines, policy) {
+  const domains = lines
+    .filter(line => line.trim() && !line.startsWith("#") && !line.startsWith("!"))
+    .map(line => line.trim().replace(/^(\|\||https?:\/\/)/, "").replace(/\^.*$/, ""))
+    .filter(domain => domain.includes(".") && !domain.startsWith("http"));
+  
+  return domains.map(domain => `HOST-SUFFIX,${domain},${policy}`).join("\n");
 }
 
 // 规则过滤
 function FilterRules(rules, pin, pout) {
   if (!pin && !pout) return rules;
   return rules.filter(rule => {
+    const domain = rule.split(",")[1];
     let keep = true;
-    if (pin) keep = pin.some(keyword => rule.includes(keyword));
-    if (pout) keep = keep && !pout.some(keyword => rule.includes(keyword));
+    if (pin) keep = pin.some(keyword => domain.includes(keyword));
+    if (pout) keep = keep && !pout.some(keyword => domain.includes(keyword));
     return keep;
   });
 }
 
-// 正则保留/删除
-function RegexFilter(rule, regex) {
-  if (regex) {
-    try {
-      if (!rule.match(new RegExp(regex, "i"))) return null;
-    } catch (e) {
-      console.error("Regex error:", e);
-      return rule; // 容错
-    }
-  }
-  return rule;
-}
-
-function RegexOutFilter(rule, regout) {
-  if (regout) {
-    try {
-      if (rule.match(new RegExp(regout, "i"))) return null;
-    } catch (e) {
-      console.error("RegexOut error:", e);
-      return rule; // 容错
-    }
-  }
-  return rule;
-}
-
-// AdBlock 到 Quantumult X 规则转换
-function AdBlockToQX(content, policy) {
-  const lines = content.split("\n").filter(line => line.trim() && !line.startsWith("!") && !line.startsWith("[") && !line.startsWith("#"));
-  let qxRules = [];
-  for (let line of lines) {
-    if (line.startsWith("||")) {
-      let domain = line.replace("||", "").replace("^", "").replace("*.", "");
-      if (domain.endsWith("^")) domain = domain.slice(0, -1);
-      qxRules.push(`DOMAIN-SUFFIX,${domain},${policy}`);
-    } else if (line.includes(".")) {
-      qxRules.push(`DOMAIN,${line},${policy}`);
-    }
-    // 扩展其他 AdBlock 规则（如 @@ 为白名单）
-    else if (line.startsWith("@@||")) {
-      domain = line.replace("@@||", "").replace("^", "").replace("*.", "");
-      if (domain.endsWith("^")) domain = domain.slice(0, -1);
-      qxRules.push(`DOMAIN-SUFFIX,${domain},DIRECT`);
-    }
-  }
-  return qxRules.filter(Boolean).join("\n");
-}
-
-// 域名列表到 DOMAIN-SET 转换
-function DomainListToSet(content, policy) {
-  const domains = content.split("\n")
-    .filter(line => line.trim() && !line.startsWith("#") && !line.startsWith("!"))
-    .map(line => line.trim().replace(/^(\|\||https?:\/\/)/, "").replace(/\^.*$/, ""))
-    .filter(domain => domain.includes(".") && !domain.startsWith("http"));
-  
-  if (domains.length === 0) return "";
-  
-  let setContent = `[${policy}]\n`;
-  setContent += domains.map(domain => `host-suffix,${domain}`).join("\n");
-  return `data:application/vnd.quantumultx.domain-set;base64,${Base64.encode(setContent)}`;
-}
-
-// 主解析函数（针对规则集）
-function RuleParse() {
+// 主解析函数
+function DomainParse() {
   const link0 = $resource.link || "";
   let content0 = $resource.content || "";
-  const subtag = $resource.tag || "Rule Set";
+  const subtag = $resource.tag || "Domain Set";
 
   // 检查内容是否有效
   if (!content0 || content0.trim() === "") {
@@ -179,7 +110,7 @@ function RuleParse() {
 
   // 参数解析
   const params = parseParameters(link0);
-  let { type, policy, in: Pin0, out: Pout0, regex, regout, hide, ntf } = params;
+  const { policy, in: Pin0, out: Pout0, b64, ntf, type } = params;
   const showNotify = ntf != 0;
 
   const detectedType = Type_Check(content0);
@@ -191,35 +122,30 @@ function RuleParse() {
   let total = "";
   let ruleCount = 0;
 
-  // 根据类型转换
+  // 域名转换逻辑
   if (type === "domain-set" || detectedType === "domain-set") {
-    total = DomainListToSet(content0, policy);
-    ruleCount = content0.split("\n").filter(Boolean).length;
-  } else if (type === "adblock" || detectedType === "adblock") {
-    let rules = AdBlockToQX(content0, policy).split("\n").filter(Boolean);
+    let lines = content0.split("\n").filter(Boolean);
+    let rules = Domain2QX(lines, policy).split("\n").filter(Boolean);
     if (Pin0 || Pout0) rules = FilterRules(rules, Pin0, Pout0);
-    if (regex) rules = rules.map(rule => RegexFilter(rule, regex)).filter(Boolean);
-    if (regout) rules = rules.map(rule => RegexOutFilter(rule, regout)).filter(Boolean);
     total = rules.join("\n");
     ruleCount = rules.length;
+
+    // Base64 编码为 DOMAIN-SET（Quantumult X 要求）
+    if (b64 == 1) {
+      const setContent = `#!name=${subtag}\n${total}`;
+      total = `data:application/vnd.quantumultx.domain-set;base64,${Base64.encode(setContent)}`;
+    } else {
+      total = `#!name=${subtag}\n${total}`;
+    }
   } else {
-    $notify("❌ 未知规则格式", `不支持 ${detectedType} 或 ${type}`, "请指定 type=domain-set 或 adblock", { "open-url": link0 });
+    $notify("❌ 未知格式", `不支持 ${detectedType} 或 ${type}`, "请确保链接为域名列表并指定 type=domain-set", { "open-url": link0 });
     return $done({ content: "" });
   }
 
-  // 隐藏模式：注释而非删除
-  if (hide === 0 && (Pout0 || regout)) {
-    total = total.split("\n").map(line => {
-      if (Pout0 && Pout0.some(kw => line.includes(kw))) return `# ${line}`;
-      if (regout && line.match(new RegExp(regout, "i"))) return `# ${line}`;
-      return line;
-    }).join("\n");
-  }
-
   if (showNotify && total) {
-    $notify("✅ 规则解析成功", `${subtag}: ${ruleCount} 条规则`, `类型: ${type}, 策略: ${policy}`, { "open-url": link0 });
+    $notify("✅ 域名解析成功", `${subtag}: ${ruleCount} 条规则`, `策略: ${policy}`, { "open-url": link0 });
   } else if (showNotify && !total) {
-    $notify("⚠️ 解析结果为空", `${subtag} 无有效规则`, "请检查链接或参数", { "open-url": link0 });
+    $notify("⚠️ 解析结果为空", `${subtag} 无有效域名`, "请检查链接或参数", { "open-url": link0 });
   }
 
   return $done({ content: total });
@@ -227,8 +153,8 @@ function RuleParse() {
 
 // 主入口
 try {
-  RuleParse();
+  DomainParse();
 } catch (err) {
-  $notify("❌ 规则解析失败", "发生错误", String(err), { "open-url": "https://t.me/Shawn_Parser_Bot" });
+  $notify("❌ 域名解析失败", "发生错误", String(err), { "open-url": "https://t.me/Shawn_Parser_Bot" });
   $done({ content: "" });
 }
