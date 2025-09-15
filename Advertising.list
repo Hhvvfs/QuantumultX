@@ -1,4 +1,3 @@
-# Update > 2021.1.30 This rule is based on optimization by lhie1/Rules.
 host-suffix,api-access.pangolin-sdk-toutiao-b.com,REJECT
 host-suffix,apoll.m.taobao.com,REJECT
 host-suffix,comet.yahoo.com,REJECT
