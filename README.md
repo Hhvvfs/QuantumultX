@@ -1,7 +1,3 @@
-GeoLite2数据库
-
-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
-
 重写资源
 
 https://raw.githubusercontent.com/Hhvvfs/QuantumultX/refs/heads/main/YouTube.conf
